@@ -7,6 +7,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_FILE = os.path.join(BASE_DIR, "icd11_complete.db")
+
 app = FastAPI(
     title="Medical AI Assistant",
     description="AI-powered disease recognition and recommendation API",
