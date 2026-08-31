@@ -1,0 +1,22 @@
+sequenceDiagram
+    actor User
+    participant UI as Streamlit App
+    participant Parser as Symptom Parser
+    participant FTS as SQLite FTS5
+    participant Vec as Chroma Vector DB
+    participant LLM as Gemini 3.5 Flash
+    participant Guard as Safety Check
+
+    User->>UI: "I have severe headache, nausea, and sensitivity to light"
+    UI->>Parser: Tokenize & clean input
+    Note over Parser: Split by commas, remove short words, build FTS query
+    Parser->>FTS: BM25 search: "severe OR headache OR nausea OR sensitivity OR light"
+    PTS-->>FTS: Return top-3 matches ranked by relevance
+    Parser->>Vec: Semantic similarity search
+    Vec-->>Parser: Return conceptually similar conditions
+    UI->>LLM: Prompt with matches + safety rules
+    Note over LLM: Generates empathetic response<br/>with medical disclaimer
+    LLM-->>UI: Structured recommendation
+    UI->>Guard: Validate output (no diagnosis, safety rules)
+    Guard-->>UI: Approved response
+    UI->>User: Display answer + expandable ICD-11 matches

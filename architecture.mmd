@@ -1,0 +1,34 @@
+graph TD
+    subgraph "Phase 1: Data Ingestion"
+        A[WHO ICD-11 API] -->|OAuth 2.0| B[dataset.py]
+        B -->|Crawl & Store| C[(SQLite: icd11_complete.db<br/>diseases table)]
+        C --> D[symptoms.py]
+        D -->|4 Strategies| E[(SQLite: symptoms table)]
+        E --> F[check_db.py]
+        F -->|Clean & Validate| E
+    end
+
+    subgraph "Phase 2: Search Indexing"
+        C --> G[setup_fts.py]
+        G -->|Create Virtual Table| H[(SQLite FTS5<br/>diseases_fts)]
+        C --> I[create_embeddings.py]
+        I -->|all-MiniLM-L6-v2| J[(Chroma Vector DB<br/>chroma_db/)]
+    end
+
+    subgraph "Phase 3: Application Layer"
+        K[User Input] --> L[app.py<br/>Streamlit UI]
+        L -->|BM25 Query| H
+        L -->|Semantic Query| J
+        H -->|Top-K Results| M[llm_agent.py]
+        J -->|Context Matches| M
+        M -->|Prompt + Context| N[Gemini 3.5 Flash]
+        N -->|Structured Response| L
+        L -->|Display| O[Chat Interface]
+    end
+
+    style C fill:#e1f5fe
+    style E fill:#e1f5fe
+    style H fill:#f3e5f5
+    style J fill:#f3e5f5
+    style N fill:#fff3e0
+    style O fill:#e8f5e9
