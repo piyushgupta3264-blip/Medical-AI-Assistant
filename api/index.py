@@ -8,44 +8,44 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 from google import genai
 
+
 # ============================================================
 # CONFIGURATION
 # ============================================================
 
 warnings.filterwarnings("ignore")
 
-# Load environment variables
 load_dotenv()
 
-# Get Gemini API key from environment
 API_KEY = os.getenv("GEMINI_API_KEY")
 
+
 # ============================================================
-# PATHS
+# PROJECT PATHS
 # ============================================================
 
-# Project root directory
-# api/index.py
-#     ↑
-# parent = api
-# parent of api = project root
+# Current file:
+# data set/api/index.py
+#
+# BASE_DIR:
+# data set/
+
 BASE_DIR = os.path.dirname(
     os.path.dirname(
         os.path.abspath(__file__)
     )
 )
 
-# ICD-11 database
 DB_FILE = os.path.join(
     BASE_DIR,
     "icd11_complete.db"
 )
 
-# Frontend
 FRONTEND_FILE = os.path.join(
     BASE_DIR,
     "index.html"
 )
+
 
 # ============================================================
 # GEMINI CLIENT
@@ -55,19 +55,21 @@ client = None
 
 if API_KEY:
     try:
-        client = genai.Client(api_key=API_KEY)
+        client = genai.Client(
+            api_key=API_KEY
+        )
     except Exception as e:
-        print("Gemini client initialization error:", e)
+        print("Gemini initialization error:", e)
         client = None
 
 
 # ============================================================
-# FASTAPI APPLICATION
+# FASTAPI APP
 # ============================================================
 
 app = FastAPI(
     title="Medical AI Assistant API",
-    description="AI Medical Assistant using ICD-11 database and Gemini",
+    description="AI Medical Assistant using ICD-11 and Gemini",
     version="1.0.0"
 )
 
@@ -87,7 +89,7 @@ class ChatRequest(BaseModel):
 @app.get("/")
 def frontend():
     """
-    Serve the frontend index.html
+    Serve index.html from the project root.
     """
 
     if not os.path.exists(FRONTEND_FILE):
@@ -103,13 +105,13 @@ def frontend():
 
 
 # ============================================================
-# HEALTH CHECK
+# API HEALTH CHECK
 # ============================================================
 
 @app.get("/api")
-def health_check():
+def api_health():
     """
-    Check whether the Medical AI Assistant API is running.
+    Basic API health check.
     """
 
     return {
@@ -118,10 +120,14 @@ def health_check():
     }
 
 
+# ============================================================
+# DETAILED HEALTH CHECK
+# ============================================================
+
 @app.get("/api/health")
-def health():
+def detailed_health():
     """
-    Detailed health check.
+    Check API, database and Gemini configuration.
     """
 
     return {
@@ -132,12 +138,14 @@ def health():
 
 
 # ============================================================
-# ICD-11 DATABASE SEARCH
+# SEARCH ICD-11 DATABASE
 # ============================================================
 
 def search_diseases(symptoms_text, top_k=5):
     """
-    Search the local ICD-11 SQLite database using FTS.
+    Search the local ICD-11 SQLite database.
+
+    Uses the diseases_fts Full Text Search table.
     """
 
     if not symptoms_text:
@@ -155,7 +163,7 @@ def search_diseases(symptoms_text, top_k=5):
 
         cursor = conn.cursor()
 
-        # Convert input into searchable words
+        # Convert symptoms into individual words
         words = [
             word.strip()
             for word in symptoms_text
@@ -167,7 +175,12 @@ def search_diseases(symptoms_text, top_k=5):
         if not words:
             return []
 
-        # SQLite FTS query
+        # Example:
+        # fever cough headache
+        #
+        # becomes:
+        # fever OR cough OR headache
+
         fts_query = " OR ".join(words)
 
         query = """
@@ -192,7 +205,10 @@ def search_diseases(symptoms_text, top_k=5):
 
     except Exception as e:
 
-        print("Database search error:", e)
+        print(
+            "Database search error:",
+            str(e)
+        )
 
         return []
 
@@ -208,20 +224,22 @@ def search_diseases(symptoms_text, top_k=5):
 
 def create_medical_context(matches):
     """
-    Convert ICD-11 search results into context for Gemini.
+    Convert ICD-11 database results into
+    context for the LLM.
     """
 
     if not matches:
 
         return (
-            "No specific medical conditions matching the user's "
-            "input were found in the ICD-11 database."
+            "No specific medical conditions matching "
+            "the user's input were found in the "
+            "ICD-11 database."
         )
 
     context = (
-        "The following conditions were retrieved from the "
-        "local WHO ICD-11 database. They are possible matches "
-        "and NOT confirmed diagnoses:\n\n"
+        "The following possible conditions were retrieved "
+        "from the local WHO ICD-11 database.\n"
+        "These are NOT confirmed diagnoses.\n\n"
     )
 
     for name, icd, definition in matches:
@@ -247,12 +265,12 @@ def create_medical_context(matches):
 
 
 # ============================================================
-# GEMINI MEDICAL RESPONSE
+# GEMINI RESPONSE
 # ============================================================
 
 def get_llm_recommendation(symptoms_text):
     """
-    Search ICD-11 database and generate a response using Gemini.
+    Search ICD-11 and generate an AI response.
     """
 
     # --------------------------------------------------------
@@ -262,13 +280,14 @@ def get_llm_recommendation(symptoms_text):
     if not API_KEY:
 
         return (
-            "Gemini API key is not configured on the server. "
-            "Please configure GEMINI_API_KEY in Vercel Environment Variables.",
+            "Gemini API key is not configured. "
+            "Please configure GEMINI_API_KEY "
+            "in Vercel Environment Variables.",
             []
         )
 
     # --------------------------------------------------------
-    # Search ICD-11 database
+    # Search ICD-11
     # --------------------------------------------------------
 
     matches = search_diseases(
@@ -280,58 +299,62 @@ def get_llm_recommendation(symptoms_text):
     # Create context
     # --------------------------------------------------------
 
-    context = create_medical_context(matches)
+    context = create_medical_context(
+        matches
+    )
 
     # --------------------------------------------------------
-    # Prompt
+    # LLM Prompt
     # --------------------------------------------------------
 
     prompt = f"""
-You are an empathetic and professional AI medical assistant.
+You are an empathetic, professional AI medical assistant.
 
-A user has provided the following information:
+The user has provided the following symptoms or message:
 
 "{symptoms_text}"
 
-ICD-11 database context:
+Here is information retrieved from the local
+WHO ICD-11 database:
 
 {context}
 
-Your task is to provide helpful health information.
+Provide a helpful conversational response.
 
-Follow these rules strictly:
+IMPORTANT RULES:
 
 1. Be empathetic and professional.
 
 2. Do NOT provide a definitive medical diagnosis.
 
-3. Explain that the conditions retrieved from the ICD-11
-   database are possible matches, not confirmed diagnoses.
+3. The ICD-11 conditions are possible matches only,
+   not confirmed diagnoses.
 
-4. Explain relevant symptoms or conditions in simple language.
+4. Explain relevant conditions in simple language.
 
-5. Recommend appropriate professional medical evaluation
-   when necessary.
+5. Recommend seeing a qualified healthcare professional
+   when appropriate.
 
-6. If symptoms appear potentially urgent or severe, advise
-   the user to seek immediate medical attention.
+6. If symptoms could indicate an emergency, recommend
+   seeking immediate medical attention.
 
-7. Do not prescribe medication or provide dangerous treatment
-   instructions.
+7. Do not prescribe medication.
 
-8. Do not claim certainty.
+8. Do not provide dangerous treatment instructions.
 
-9. Keep the response understandable for a general user.
+9. Do not claim certainty.
 
-10. End with this disclaimer:
+10. Keep the response understandable to a general user.
 
-"Medical Disclaimer: This AI assistant provides general
+11. End with this disclaimer:
+
+Medical Disclaimer: This AI assistant provides general
 health information and is not a substitute for diagnosis,
-treatment, or advice from a qualified healthcare professional."
+treatment, or advice from a qualified healthcare professional.
 """
 
     # --------------------------------------------------------
-    # Generate Gemini response
+    # Call Gemini
     # --------------------------------------------------------
 
     try:
@@ -340,7 +363,7 @@ treatment, or advice from a qualified healthcare professional."
 
             return (
                 "Gemini client is not available. "
-                "Please check GEMINI_API_KEY configuration.",
+                "Please check your GEMINI_API_KEY.",
                 matches
             )
 
@@ -351,7 +374,10 @@ treatment, or advice from a qualified healthcare professional."
 
         if response and response.text:
 
-            return response.text, matches
+            return (
+                response.text,
+                matches
+            )
 
         return (
             "The AI service did not return a response.",
@@ -360,11 +386,14 @@ treatment, or advice from a qualified healthcare professional."
 
     except Exception as e:
 
-        print("Gemini error:", e)
+        print(
+            "Gemini API error:",
+            str(e)
+        )
 
         return (
-            "Sorry, I was unable to connect to the AI service "
-            "at the moment. Please try again later.",
+            "Sorry, I was unable to connect to "
+            "the AI service. Please try again later.",
             matches
         )
 
@@ -376,7 +405,7 @@ treatment, or advice from a qualified healthcare professional."
 @app.post("/api/chat")
 def chat(request: ChatRequest):
     """
-    Main medical assistant endpoint.
+    Main Medical AI Assistant endpoint.
     """
 
     symptoms = request.symptoms.strip()
@@ -395,7 +424,7 @@ def chat(request: ChatRequest):
         }
 
     # --------------------------------------------------------
-    # Generate response
+    # Get AI response
     # --------------------------------------------------------
 
     response_text, matches = get_llm_recommendation(
@@ -403,7 +432,7 @@ def chat(request: ChatRequest):
     )
 
     # --------------------------------------------------------
-    # Format database matches
+    # Format ICD-11 matches
     # --------------------------------------------------------
 
     formatted_matches = []
@@ -419,7 +448,7 @@ def chat(request: ChatRequest):
         )
 
     # --------------------------------------------------------
-    # Return response
+    # Return JSON
     # --------------------------------------------------------
 
     return {
@@ -431,13 +460,13 @@ def chat(request: ChatRequest):
 
 
 # ============================================================
-# DATABASE TEST ENDPOINT
+# DATABASE STATUS
 # ============================================================
 
 @app.get("/api/database")
 def database_status():
     """
-    Check whether the ICD-11 database exists.
+    Check whether the ICD-11 database is available.
     """
 
     if not os.path.exists(DB_FILE):
@@ -452,5 +481,25 @@ def database_status():
     return {
         "database": "available",
         "size_bytes": size,
-        "size_mb": round(size / (1024 * 1024), 2)
+        "size_mb": round(
+            size / (1024 * 1024),
+            2
+        )
+    }
+
+
+# ============================================================
+# ROOT INFORMATION
+# ============================================================
+
+@app.get("/api/info")
+def api_info():
+
+    return {
+        "project": "Medical AI Assistant",
+        "version": "1.0.0",
+        "frontend": "/",
+        "chat_endpoint": "/api/chat",
+        "health_endpoint": "/api/health",
+        "database_endpoint": "/api/database"
     }
