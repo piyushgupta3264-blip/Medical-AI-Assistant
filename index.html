@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Medical AI Assistant</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        .description {
+            text-align: center;
+            color: #555;
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            padding: 12px;
+            margin-top: 20px;
+            box-sizing: border-box;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            resize: vertical;
+        }
+
+        button {
+            margin-top: 15px;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+        }
+
+        #result {
+            margin-top: 25px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            display: none;
+        }
+
+        .disease {
+            margin-top: 15px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+        }
+
+        .disclaimer {
+            margin-top: 20px;
+            font-size: 13px;
+            color: #777;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Medical AI Assistant</h1>
+
+    <p class="description">
+        Describe your symptoms and the AI assistant will search
+        the ICD-11 database and provide general information.
+    </p>
+
+    <textarea
+        id="symptoms"
+        placeholder="Example: I have fever, cough and headache">
+    </textarea>
+
+    <button id="submitBtn" onclick="analyzeSymptoms()">
+        Analyze Symptoms
+    </button>
+
+    <div id="result">
+
+        <h2>AI Recommendation</h2>
+
+        <p id="response"></p>
+
+        <h3>Database Matches</h3>
+
+        <div id="matches"></div>
+
+        <p class="disclaimer">
+            This AI assistant does not provide a definitive medical diagnosis.
+            Consult a qualified healthcare professional for medical advice.
+        </p>
+
+    </div>
+
+    <script>
+
+        async function analyzeSymptoms() {
+
+            const symptoms =
+                document.getElementById("symptoms").value.trim();
+
+            const button =
+                document.getElementById("submitBtn");
+
+            const result =
+                document.getElementById("result");
+
+            const responseElement =
+                document.getElementById("response");
+
+            const matchesElement =
+                document.getElementById("matches");
+
+
+            if (!symptoms) {
+                alert("Please enter your symptoms.");
+                return;
+            }
+
+
+            button.disabled = true;
+            button.innerText = "Analyzing...";
+
+            result.style.display = "block";
+
+            responseElement.innerText =
+                "Analyzing your symptoms...";
+
+            matchesElement.innerHTML = "";
+
+
+            try {
+
+                const response = await fetch("/api/chat", {
+
+                    method: "POST",
+
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+
+                    body: JSON.stringify({
+                        symptoms: symptoms
+                    })
+
+                });
+
+
+                if (!response.ok) {
+                    throw new Error(
+                        "Server returned an error."
+                    );
+                }
+
+
+                const data = await response.json();
+
+
+                responseElement.innerText =
+                    data.response;
+
+
+                if (data.matches && data.matches.length > 0) {
+
+                    data.matches.forEach(match => {
+
+                        const div =
+                            document.createElement("div");
+
+                        div.className = "disease";
+
+                        div.innerHTML = `
+                            <strong>${match.disease}</strong>
+                            <br>
+                            ICD-11 Code: ${match.icd_code}
+                            <br>
+                            ${match.definition || ""}
+                        `;
+
+                        matchesElement.appendChild(div);
+
+                    });
+
+                } else {
+
+                    matchesElement.innerText =
+                        "No matching conditions were found.";
+
+                }
+
+
+            } catch (error) {
+
+                responseElement.innerText =
+                    "Error: " + error.message;
+
+            }
+
+
+            button.disabled = false;
+            button.innerText = "Analyze Symptoms";
+        }
+
+    </script>
+
+</body>
+</html>
